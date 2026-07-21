@@ -5,7 +5,7 @@ A lightweight, high-performance syntax highlighting and diagnostics extension fo
 Instead of relying on heavy Tree-sitter configurations or complex LSP setups, this plugin hooks directly into your native compiled C++ `qc` compiler binary to paint editor colors and generate error diagnostics instantly as you type.
 
 ## Note:
-Requires QC Version `x0.20.1`+
+Requires QC Version `x0.20.11`+
 
 ## How It Works
 

@@ -80,14 +80,24 @@ local token_map = {
 local function run_lexer_highlight()
   local bufnr = vim.api.nvim_get_current_buf()
   local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local line_map = {}
+  do
+    local lexer_line = 0
+    for buf_line, text in ipairs(lines) do
+      if not text:match("^%s*#") then
+        line_map[lexer_line] = buf_line - 1
+        lexer_line = lexer_line + 1
+      end
+    end
+  end
   local tmp_file = vim.fn.tempname()
   local f = io.open(tmp_file, "w")
   if not f then return end
   f:write(table.concat(lines, "\n"))
   f:close()
-  local cmd = { "qc", "-dump-tokens", tmp_file } 
+  local cmd = { "qc", "-dump-tokens", tmp_file }
   local stdout_data = {}
-  local job_id = vim.fn.jobstart(cmd, {
+  vim.fn.jobstart(cmd, {
     cwd = vim.fn.getcwd(),
     stdout_buffered = true,
     on_stdout = function(_, data)
@@ -104,41 +114,51 @@ local function run_lexer_highlight()
       local diagnostics = {}
       for _, line in ipairs(stdout_data) do
         line = line:gsub("\r", "")
-        if not line:match("^#") and not line:match("<eof>") and line ~= "" and not line:match("^%-") then
-          local l_num, col, len, token_type = line:match("^(%d+) (%d+) (%d+) (.*)$")
-          if l_num then
-          local line_num = tonumber(l_num)
-          local buf_line = lines[line_num + 1]
-          if buf_line and buf_line:match("^%s*#") then
-            goto continue
+        if not line:match("^#")
+            and not line:match("<eof>")
+            and line ~= ""
+            and not line:match("^%-") then
+          if line:match("^ERROR:") then
+            local l_num, col, len, msg =
+                line:match("^ERROR:%s*(%d+)%s+(%d+)%s+(%d+)%s+(.*)$")
+
+            if l_num then
+              local line_num = line_map[tonumber(l_num)]
+              if line_num then
+                table.insert(diagnostics, {
+                  bufnr = bufnr,
+                  lnum = line_num,
+                  col = tonumber(col),
+                  end_lnum = line_num,
+                  end_col = tonumber(col) + tonumber(len),
+                  severity = vim.diagnostic.severity.ERROR,
+                  message = msg,
+                  source = "qc-compiler",
+                })
+              end
             end
-            if token_type:match(":") then
-              table.insert(diagnostics, {
-                bufnr = bufnr,
-                lnum = line_num,
-                col = tonumber(col),
-                end_lnum = line_num,
-                end_col = tonumber(col) + tonumber(len),
-                severity = vim.diagnostic.severity.ERROR,
-                message = "Compiler Error: " .. token_type,
-                source = "qc-compiler",
-              })
-            elseif token_map[token_type] then
-              vim.api.nvim_buf_add_highlight(
-                bufnr,
-                ns_id,
-                token_map[token_type],
-                line_num,
-                tonumber(col),
-                tonumber(col) + tonumber(len)
-              )
+          else
+            local l_num, col, len, token_type =
+                line:match("^(%d+) (%d+) (%d+) (.*)$")
+
+            if l_num then
+              local line_num = line_map[tonumber(l_num)]
+              if line_num and token_map[token_type] then
+                vim.api.nvim_buf_add_highlight(
+                  bufnr,
+                  ns_id,
+                  token_map[token_type],
+                  line_num,
+                  tonumber(col),
+                  tonumber(col) + tonumber(len)
+                )
+              end
             end
-            ::continue::
           end
         end
       end
       vim.diagnostic.set(diag_ns_id, bufnr, diagnostics)
-    end
+    end,
   })
 end
 local function debounced_highlight()

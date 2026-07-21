@@ -87,7 +87,6 @@ local function run_lexer_highlight()
   f:close()
   local cmd = { "qc", "-dump-tokens", tmp_file } 
   local stdout_data = {}
-  
   local job_id = vim.fn.jobstart(cmd, {
     cwd = vim.fn.getcwd(),
     stdout_buffered = true,
@@ -108,12 +107,17 @@ local function run_lexer_highlight()
         if not line:match("^#") and not line:match("<eof>") and line ~= "" and not line:match("^%-") then
           local l_num, col, len, token_type = line:match("^(%d+) (%d+) (%d+) (.*)$")
           if l_num then
+          local line_num = tonumber(l_num)
+          local buf_line = lines[line_num + 1]
+          if buf_line and buf_line:match("^%s*#") then
+            goto continue
+            end
             if token_type:match(":") then
               table.insert(diagnostics, {
                 bufnr = bufnr,
-                lnum = tonumber(l_num),
+                lnum = line_num,
                 col = tonumber(col),
-                end_lnum = tonumber(l_num),
+                end_lnum = line_num,
                 end_col = tonumber(col) + tonumber(len),
                 severity = vim.diagnostic.severity.ERROR,
                 message = "Compiler Error: " .. token_type,
@@ -124,11 +128,12 @@ local function run_lexer_highlight()
                 bufnr,
                 ns_id,
                 token_map[token_type],
-                tonumber(l_num),
+                line_num,
                 tonumber(col),
                 tonumber(col) + tonumber(len)
               )
             end
+            ::continue::
           end
         end
       end
